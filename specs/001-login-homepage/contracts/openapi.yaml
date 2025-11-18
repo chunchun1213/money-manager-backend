@@ -1,0 +1,534 @@
+openapi: 3.1.0
+info:
+  title: Money Manager Backend - 登入記帳主頁功能 API
+  description: |
+    後端 API 規格,支援社群帳號登入 (Google/Facebook OAuth 2.0)、會話管理、登出功能與記帳主頁基本資料。
+    
+    **認證方式**: Bearer Token (JWT)
+    **OAuth 流程**: Authorization Code Flow with PKCE
+    **測試環境**: https://api-dev.money-manager.example.com
+    **正式環境**: https://api.money-manager.example.com
+  version: 1.0.0
+  contact:
+    name: Money Manager Backend Team
+    email: backend@money-manager.example.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api-dev.money-manager.example.com/api/v1
+    description: 開發環境
+  - url: https://api.money-manager.example.com/api/v1
+    description: 正式環境
+
+tags:
+  - name: Authentication
+    description: 認證相關操作 (登入、登出、Token 驗證)
+  - name: User
+    description: 使用者帳號管理 (帳號刪除)
+  - name: Homepage
+    description: 記帳主頁資料 API
+
+security:
+  - BearerAuth: []
+
+paths:
+  /auth/login/google:
+    post:
+      tags:
+        - Authentication
+      summary: Google OAuth 登入
+      description: |
+        接受前端提供的 Google OAuth authorization code 與 code_verifier,
+        向 Google 交換 access token,建立或更新使用者帳號,產生 JWT session token。
+        
+        **流程**: 
+        1. 前端使用 Google OAuth SDK 取得 authorization code
+        2. 前端將 code 與 code_verifier 發送給後端
+        3. 後端使用 Supabase Auth 交換 token
+        4. 後端建立/更新 User 與 SocialAccount
+        5. 後端產生 JWT token 並建立 Session 記錄
+        6. 後端記錄 AuditLog
+      operationId: loginWithGoogle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+                - code_verifier
+              properties:
+                code:
+                  type: string
+                  description: Google OAuth authorization code
+                  example: "4/0AfJohXk..."
+                code_verifier:
+                  type: string
+                  description: PKCE code verifier (43-128 字元)
+                  minLength: 43
+                  maxLength: 128
+                  example: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+                device_info:
+                  type: object
+                  description: 裝置資訊 (選填)
+                  properties:
+                    user_agent:
+                      type: string
+                      example: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"
+                    platform:
+                      type: string
+                      example: "iOS 17.0"
+      responses:
+        '200':
+          description: 登入成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: OAuth token 無效或過期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "INVALID_OAUTH_TOKEN"
+                message: "Google OAuth token 無效,請重新登入"
+                timestamp: "2025-01-18T10:30:00Z"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/login/facebook:
+    post:
+      tags:
+        - Authentication
+      summary: Facebook OAuth 登入
+      description: |
+        接受前端提供的 Facebook OAuth authorization code 與 code_verifier,
+        向 Facebook 交換 access token,建立或更新使用者帳號,產生 JWT session token。
+        
+        **流程**: 與 Google 登入相同,僅提供者不同
+      operationId: loginWithFacebook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+                - code_verifier
+              properties:
+                code:
+                  type: string
+                  description: Facebook OAuth authorization code
+                  example: "AQD8F..."
+                code_verifier:
+                  type: string
+                  description: PKCE code verifier (43-128 字元)
+                  minLength: 43
+                  maxLength: 128
+                  example: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+                device_info:
+                  type: object
+                  description: 裝置資訊 (選填)
+                  properties:
+                    user_agent:
+                      type: string
+                      example: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"
+                    platform:
+                      type: string
+                      example: "iOS 17.0"
+      responses:
+        '200':
+          description: 登入成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: OAuth token 無效或過期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "INVALID_OAUTH_TOKEN"
+                message: "Facebook OAuth token 無效,請重新登入"
+                timestamp: "2025-01-18T10:30:00Z"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: 登出
+      description: |
+        撤銷當前會話的 JWT token,清除會話記錄。
+        登出後,該 token 將無法再訪問受保護的 API。
+        
+        **流程**:
+        1. 前端發送 JWT token (Authorization header)
+        2. 後端驗證 token 並找到對應 Session
+        3. 後端設定 Session.revoked = TRUE
+        4. 後端清除 Redis cache
+        5. 後端記錄 AuditLog
+      operationId: logout
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 登出成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "登出成功"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/verify:
+    get:
+      tags:
+        - Authentication
+      summary: 驗證 Token
+      description: |
+        驗證 JWT token 是否有效,並返回使用者基本資訊。
+        用於前端檢查使用者登入狀態。
+        
+        **驗證條件**:
+        - Token 格式正確
+        - Token 簽名有效
+        - Token 未過期
+        - Session 未被撤銷 (revoked = FALSE)
+      operationId: verifyToken
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Token 有效
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/UserProfile'
+                  session:
+                    type: object
+                    properties:
+                      expires_at:
+                        type: string
+                        format: date-time
+                        description: Session 過期時間
+                        example: "2025-02-17T10:30:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: 更新 Token
+      description: |
+        使用 refresh token 取得新的 JWT token,避免使用者頻繁重新登入。
+        
+        **流程**:
+        1. 前端發送 refresh token
+        2. 後端驗證 refresh token 有效性
+        3. 後端產生新的 JWT token 與 refresh token (rotation)
+        4. 後端更新 Session 記錄
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+                  description: Refresh token
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      responses:
+        '200':
+          description: Token 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Refresh token 無效或過期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "INVALID_REFRESH_TOKEN"
+                message: "Refresh token 無效,請重新登入"
+                timestamp: "2025-01-18T10:30:00Z"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /user/delete:
+    delete:
+      tags:
+        - User
+      summary: 刪除帳號
+      description: |
+        永久刪除使用者帳號及所有關聯資料。
+        
+        **刪除範圍**:
+        - User 記錄 (auth.users)
+        - 所有 SocialAccount 記錄 (CASCADE)
+        - 所有 Session 記錄 (CASCADE)
+        - AuditLog 的 user_id 設為 NULL (匿名化)
+        
+        **注意**: 此操作無法恢復
+      operationId: deleteAccount
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 帳號刪除成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "帳號已永久刪除"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /homepage:
+    get:
+      tags:
+        - Homepage
+      summary: 取得記帳主頁資料
+      description: |
+        取得記帳主頁所需的基本資料 (目前為佔位資料)。
+        
+        **權限**: 需要有效的 JWT token
+        **回應**: 使用者基本資訊 + 佔位內容
+      operationId: getHomepage
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 主頁資料
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/UserProfile'
+                  content:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: "施工中..."
+                      icon:
+                        type: string
+                        example: "🚧"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token (從 /auth/login/* 取得)
+
+  schemas:
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: JWT access token (短期有效, 建議 1 小時)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjE0MTc0MDAwIiwic2Vzc2lvbl9pZCI6Ijk4N2Y2NTQzLWUyMWItMTJkMy1hNDU2LTQyNjYxNDE3NDAwMCIsImlhdCI6MTcwNTU2ODYwMCwiZXhwIjoxNzA1NTcyMjAwfQ.xyz123abc"
+        refresh_token:
+          type: string
+          description: Refresh token (長期有效, 30 天)
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        token_type:
+          type: string
+          enum: [Bearer]
+          example: "Bearer"
+        expires_in:
+          type: integer
+          description: Access token 有效期限 (秒)
+          example: 3600
+        user:
+          $ref: '#/components/schemas/UserProfile'
+      required:
+        - access_token
+        - refresh_token
+        - token_type
+        - expires_in
+        - user
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 使用者 ID
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        email:
+          type: string
+          format: email
+          description: 使用者 Email
+          example: "user@example.com"
+        name:
+          type: string
+          description: 使用者姓名
+          example: "王小明"
+        avatar_url:
+          type: string
+          format: uri
+          description: 使用者頭像 URL
+          example: "https://lh3.googleusercontent.com/a/..."
+        provider:
+          type: string
+          enum: [google, facebook]
+          description: 主要 OAuth 提供者
+          example: "google"
+        created_at:
+          type: string
+          format: date-time
+          description: 帳號建立時間
+          example: "2025-01-15T08:30:00Z"
+        last_sign_in_at:
+          type: string
+          format: date-time
+          description: 最後登入時間
+          example: "2025-01-18T10:30:00Z"
+      required:
+        - id
+        - email
+        - name
+        - avatar_url
+        - provider
+        - created_at
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: 錯誤碼 (機器可讀)
+          example: "INVALID_TOKEN"
+        message:
+          type: string
+          description: 錯誤訊息 (使用者可讀, 繁體中文)
+          example: "Token 無效,請重新登入"
+        details:
+          type: object
+          description: 額外錯誤詳情 (選填)
+          additionalProperties: true
+          example:
+            field: "code"
+            reason: "code 參數格式不正確"
+        timestamp:
+          type: string
+          format: date-time
+          description: 錯誤發生時間
+          example: "2025-01-18T10:30:00Z"
+      required:
+        - error
+        - message
+        - timestamp
+
+  responses:
+    BadRequest:
+      description: 請求參數錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missing_parameter:
+              summary: 缺少必填參數
+              value:
+                error: "MISSING_PARAMETER"
+                message: "缺少必填參數: code"
+                details:
+                  field: "code"
+                  reason: "code 參數為必填"
+                timestamp: "2025-01-18T10:30:00Z"
+            invalid_format:
+              summary: 參數格式錯誤
+              value:
+                error: "INVALID_FORMAT"
+                message: "code_verifier 長度必須介於 43-128 字元"
+                details:
+                  field: "code_verifier"
+                  reason: "長度 = 30, 必須 >= 43"
+                timestamp: "2025-01-18T10:30:00Z"
+
+    Unauthorized:
+      description: 未授權 (Token 無效、過期或缺少)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missing_token:
+              summary: 缺少 Token
+              value:
+                error: "MISSING_TOKEN"
+                message: "請提供 Authorization header"
+                timestamp: "2025-01-18T10:30:00Z"
+            invalid_token:
+              summary: Token 無效
+              value:
+                error: "INVALID_TOKEN"
+                message: "Token 格式不正確或簽名無效"
+                timestamp: "2025-01-18T10:30:00Z"
+            expired_token:
+              summary: Token 過期
+              value:
+                error: "EXPIRED_TOKEN"
+                message: "Token 已過期,請重新登入"
+                timestamp: "2025-01-18T10:30:00Z"
+            revoked_token:
+              summary: Token 已撤銷
+              value:
+                error: "REVOKED_TOKEN"
+                message: "此 Token 已登出,請重新登入"
+                timestamp: "2025-01-18T10:30:00Z"
+
+    InternalServerError:
+      description: 伺服器內部錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "INTERNAL_SERVER_ERROR"
+            message: "系統錯誤,請稍後再試"
+            timestamp: "2025-01-18T10:30:00Z"
