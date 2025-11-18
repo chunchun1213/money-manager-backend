@@ -1,36 +1,39 @@
 <!--
 Sync Impact Report - Constitution Update
 ═══════════════════════════════════════════════════════════════════════════════
-Version Change: Initial (none) → 1.0.0
-Change Type: MAJOR - Initial constitution ratification
+Version Change: 1.0.0 → 1.1.0
+Change Type: MINOR - New principle added (Documentation Language Standards)
 
 Modified Principles:
-  - NEW: I. Code Quality First
-  - NEW: II. Test-Driven Development (NON-NEGOTIABLE)
-  - NEW: III. User Experience Consistency
-  - NEW: IV. Performance & Scalability Requirements
+  - None
+
+Added Principles:
+  - NEW: V. Documentation Language Standards
 
 Added Sections:
-  - Core Principles (4 principles)
-  - Security & Data Integrity Standards
-  - Development Workflow & Quality Gates
-  - Governance
+  - None
 
 Removed Sections:
-  - None (initial creation)
+  - None
 
 Templates Requiring Updates:
-  ✅ .specify/templates/plan-template.md - Validated (Constitution Check section compatible)
-  ✅ .specify/templates/spec-template.md - Validated (User scenarios align with UX consistency)
-  ✅ .specify/templates/tasks-template.md - Validated (Test-first workflow supported)
+  ✅ .specify/templates/plan-template.md - No updates needed
+  ✅ .specify/templates/spec-template.md - No updates needed (language rule applies)
+  ✅ .specify/templates/tasks-template.md - No updates needed (language rule applies)
+  ✅ .specify/templates/checklist-template.md - No updates needed (language rule applies)
 
 Follow-up TODOs:
   - None (all placeholders filled)
 
-Rationale for Version 1.0.0:
-  Initial constitution establishing foundational governance for money-manager-backend
-  project. MAJOR version (1.x.x) chosen as this introduces all core principles and
-  governance framework that will guide all future development.
+Rationale for Version 1.1.0:
+  MINOR version increment as this adds a new principle governing documentation language
+  standards without breaking existing governance. Principle V establishes that while
+  the constitution itself remains in English for international collaboration, all
+  project specifications, plans, and user-facing documentation must be in Traditional
+  Chinese (zh-TW) to serve the primary user base.
+
+Previous Version History:
+  - 1.0.0 (2025-11-18): Initial constitution ratification with 4 core principles
 ═══════════════════════════════════════════════════════════════════════════════
 -->
 
@@ -136,6 +139,30 @@ All implementations MUST meet these performance standards:
 
 **Rationale**: Financial applications often handle large volumes of transactions and data. Poor performance leads to user frustration, timeout errors, and scaling costs. Early optimization for scalability prevents expensive architectural rewrites later.
 
+### V. Documentation Language Standards
+
+**Constitution Language**:
+
+- This constitution document MUST remain in English only to facilitate international collaboration and ensure clarity for global contributors
+
+**Project Documentation Language**:
+
+- All feature specifications (spec.md) MUST be written in Traditional Chinese (zh-TW)
+- All implementation plans (plan.md) MUST be written in Traditional Chinese (zh-TW)
+- All task lists (tasks.md) MUST be written in Traditional Chinese (zh-TW)
+- All user-facing documentation (README, guides, API docs for end-users) MUST be written in Traditional Chinese (zh-TW)
+- All error messages shown to end-users MUST be in Traditional Chinese (zh-TW)
+
+**Code and Technical Documentation**:
+
+- Code comments MAY be in English or Traditional Chinese at developer's discretion
+- API endpoint documentation for developers MAY be in English
+- Technical architecture documents MAY be in English for international team collaboration
+- Git commit messages SHOULD be in Traditional Chinese for consistency
+- Code reviews MAY be conducted in Traditional Chinese or English
+
+**Rationale**: The primary user base for Money Manager Backend is Traditional Chinese-speaking users. Maintaining specifications and user-facing documentation in Traditional Chinese ensures clarity, reduces translation errors, and improves user experience. However, keeping the constitution in English allows international contributors to understand governance principles and facilitates collaboration with global development communities.
+
 ## Security & Data Integrity Standards
 
 **Authentication & Authorization**:
@@ -226,4 +253,4 @@ This Constitution supersedes all other development practices and conventions. Al
 - All changes MUST be tracked with version history and rationale
 - Teams are encouraged to propose improvements based on real-world experience
 
-**Version**: 1.0.0 | **Ratified**: 2025-11-18 | **Last Amended**: 2025-11-18
+**Version**: 1.1.0 | **Ratified**: 2025-11-18 | **Last Amended**: 2025-11-18
