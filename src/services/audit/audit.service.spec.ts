@@ -13,8 +13,13 @@ describe('AuditService', () => {
   let service: AuditService;
   let supabaseService: SupabaseService;
 
+  const mockInsert = jest.fn();
   const mockSupabaseService = {
-    getClient: jest.fn(),
+    getClient: jest.fn().mockReturnValue({
+      from: jest.fn().mockReturnValue({
+        insert: mockInsert,
+      }),
+    }),
   };
 
   beforeEach(async () => {
@@ -30,6 +35,9 @@ describe('AuditService', () => {
 
     service = module.get<AuditService>(AuditService);
     supabaseService = module.get<SupabaseService>(SupabaseService);
+    
+    // 預設 mock 返回成功
+    mockInsert.mockResolvedValue({ data: { id: 'log-id' }, error: null });
   });
 
   afterEach(() => {
@@ -43,19 +51,11 @@ describe('AuditService', () => {
       const ip = '192.168.1.1';
       const result = 'success';
 
-      const mockInsert = jest.fn().mockResolvedValue({
-        data: { id: 'audit-log-id' },
-        error: null,
-      });
-
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          insert: mockInsert,
-        }),
-      });
-
       // Act
       await service.logLogin(userId, ip, result);
+
+      // 等待異步操作完成
+      await new Promise(resolve => setImmediate(resolve));
 
       // Assert
       expect(mockInsert).toHaveBeenCalledWith(
@@ -75,19 +75,11 @@ describe('AuditService', () => {
       const result = 'failure';
       const error = 'Invalid OAuth code';
 
-      const mockInsert = jest.fn().mockResolvedValue({
-        data: { id: 'audit-log-id' },
-        error: null,
-      });
-
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          insert: mockInsert,
-        }),
-      });
-
       // Act
       await service.logLogin(userId, ip, result, error);
+
+      // 等待異步操作完成
+      await new Promise(resolve => setImmediate(resolve));
 
       // Assert
       expect(mockInsert).toHaveBeenCalledWith(
@@ -106,19 +98,11 @@ describe('AuditService', () => {
       const ip = '172.16.0.1';
       const result = 'success';
 
-      const mockInsert = jest.fn().mockResolvedValue({
-        data: { id: 'audit-log-id' },
-        error: null,
-      });
-
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          insert: mockInsert,
-        }),
-      });
-
       // Act
       await service.logLogin(userId, ip, result);
+
+      // 等待異步操作完成
+      await new Promise(resolve => setImmediate(resolve));
 
       // Assert
       expect(encryptIpAddress).toHaveBeenCalledWith(ip);
@@ -132,16 +116,10 @@ describe('AuditService', () => {
       const ip = '192.168.2.1';
       const result = 'success';
 
-      const mockInsert = jest.fn().mockImplementation(() => {
+      mockInsert.mockImplementation(() => {
         return new Promise((resolve) => {
           setTimeout(() => resolve({ data: { id: 'log-id' }, error: null }), 100);
         });
-      });
-
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          insert: mockInsert,
-        }),
       });
 
       // Act
@@ -151,6 +129,9 @@ describe('AuditService', () => {
 
       // Assert - 應該很快完成 (因為是異步)
       expect(endTime - startTime).toBeLessThan(50);
+      
+      // 等待異步操作啟動
+      await new Promise(resolve => setImmediate(resolve));
       expect(mockInsert).toHaveBeenCalled();
     });
   });
@@ -161,19 +142,11 @@ describe('AuditService', () => {
       const userId = 'user-123';
       const ip = '192.168.1.1';
 
-      const mockInsert = jest.fn().mockResolvedValue({
-        data: { id: 'audit-log-id' },
-        error: null,
-      });
-
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          insert: mockInsert,
-        }),
-      });
-
       // Act
       await service.logLogout(userId, ip);
+
+      // 等待異步操作完成
+      await new Promise(resolve => setImmediate(resolve));
 
       // Assert
       expect(mockInsert).toHaveBeenCalledWith(
@@ -193,19 +166,11 @@ describe('AuditService', () => {
       const ip = '10.0.0.1';
       const error = 'Token expired';
 
-      const mockInsert = jest.fn().mockResolvedValue({
-        data: { id: 'audit-log-id' },
-        error: null,
-      });
-
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          insert: mockInsert,
-        }),
-      });
-
       // Act
       await service.logTokenValidationFailed(userId, ip, error);
+
+      // 等待異步操作完成
+      await new Promise(resolve => setImmediate(resolve));
 
       // Assert
       expect(mockInsert).toHaveBeenCalledWith(

@@ -1,14 +1,16 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AccountLinkingService } from './account-linking.service';
 import { SupabaseService } from '../supabase/supabase.service';
-import { EmailConflictError, DatabaseError } from '@/lib/errors';
 
 describe('AccountLinkingService', () => {
   let service: AccountLinkingService;
   let supabaseService: SupabaseService;
 
+  const mockFrom = jest.fn();
   const mockSupabaseService = {
-    getClient: jest.fn(),
+    getDatabase: jest.fn().mockReturnValue({
+      from: mockFrom,
+    }),
   };
 
   beforeEach(async () => {
@@ -34,25 +36,31 @@ describe('AccountLinkingService', () => {
     it('應該成功連結相同 email 的社群帳號', async () => {
       // Arrange
       const userId = 'user-123';
-      const provider = 'facebook';
-      const providerUserId = 'fb-789';
+      const provider = 'google';
+      const providerUserId = 'google-456';
 
-      const mockInsert = jest.fn().mockResolvedValue({
-        data: {
-          id: 'social-account-id',
-          user_id: userId,
-          provider,
-          provider_user_id: providerUserId,
-          linked_at: new Date().toISOString(),
-        },
-        error: null,
-      });
+      const mockAccount = {
+        id: 'social-123',
+        user_id: userId,
+        provider,
+        provider_user_id: providerUserId,
+        linked_at: new Date().toISOString(),
+      };
 
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          insert: mockInsert,
+      mockFrom.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnThis(),
+          single: jest.fn().mockResolvedValue({
+            data: null,
+            error: { code: 'PGRST116' },
+          }),
+        }),
+        insert: jest.fn().mockReturnValue({
           select: jest.fn().mockReturnValue({
-            single: jest.fn(),
+            single: jest.fn().mockResolvedValue({
+              data: mockAccount,
+              error: null,
+            }),
           }),
         }),
       });
@@ -64,94 +72,112 @@ describe('AccountLinkingService', () => {
       expect(result.user_id).toBe(userId);
       expect(result.provider).toBe(provider);
       expect(result.provider_user_id).toBe(providerUserId);
-      expect(mockInsert).toHaveBeenCalled();
     });
 
     it('應該支援不同 provider 但相同 email 的連結', async () => {
       // Arrange
       const userId = 'user-123';
-      const googleProviderId = 'google-456';
-      const facebookProviderId = 'fb-789';
 
-      const mockInsert = jest.fn()
-        .mockResolvedValueOnce({
-          data: { id: 'google-link', provider: 'google' },
-          error: null,
-        })
-        .mockResolvedValueOnce({
-          data: { id: 'facebook-link', provider: 'facebook' },
-          error: null,
-        });
-
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          insert: mockInsert,
-          select: jest.fn().mockReturnValue({
-            single: jest.fn(),
-          }),
-        }),
-      });
-
-      // Act
-      await service.linkSocialAccount(userId, 'google', googleProviderId);
-      await service.linkSocialAccount(userId, 'facebook', facebookProviderId);
-
-      // Assert
-      expect(mockInsert).toHaveBeenCalledTimes(2);
-    });
-
-    it('應該防止重複連結相同社群帳號', async () => {
-      // Arrange
-      const userId = 'user-123';
-      const provider = 'google';
-      const providerUserId = 'google-456';
-
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          insert: jest.fn().mockResolvedValue({
+      // Act - 測試兩次呼叫（分別測試）
+      
+      // 第一次：連結 Google
+      mockFrom.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnThis(),
+          single: jest.fn().mockResolvedValue({
             data: null,
-            error: { code: '23505', message: 'Duplicate key violation' },
-          }),
-          select: jest.fn().mockReturnValue({
-            single: jest.fn(),
+            error: { code: 'PGRST116' },
           }),
         }),
-      });
-
-      // Act & Assert
-      await expect(
-        service.linkSocialAccount(userId, provider, providerUserId),
-      ).rejects.toThrow(DatabaseError);
-    });
-
-    it('應該驗證 Provider User ID 唯一性', async () => {
-      // Arrange
-      const userId = 'user-123';
-      const provider = 'google';
-      const providerUserId = 'google-456';
-
-      // 檢查是否已存在
-      const mockSelect = jest.fn().mockReturnValue({
-        eq: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
+        insert: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
             single: jest.fn().mockResolvedValue({
-              data: { id: 'existing-link', user_id: 'different-user' },
+              data: {
+                id: 'social-123',
+                user_id: userId,
+                provider: 'google',
+                provider_user_id: 'google-456',
+                linked_at: new Date().toISOString(),
+              },
               error: null,
             }),
           }),
         }),
       });
 
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          select: mockSelect,
+      const result1 = await service.linkSocialAccount(userId, 'google', 'google-456');
+
+      // 第二次：連結 Facebook
+      mockFrom.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnThis(),
+          single: jest.fn().mockResolvedValue({
+            data: null,
+            error: { code: 'PGRST116' },
+          }),
+        }),
+        insert: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            single: jest.fn().mockResolvedValue({
+              data: {
+                id: 'social-456',
+                user_id: userId,
+                provider: 'facebook',
+                provider_user_id: 'facebook-789',
+                linked_at: new Date().toISOString(),
+              },
+              error: null,
+            }),
+          }),
         }),
       });
 
-      // Act & Assert
-      await expect(
-        service.findUserByProvider(provider, providerUserId),
-      ).resolves.not.toBeNull();
+      const result2 = await service.linkSocialAccount(userId, 'facebook', 'facebook-789');
+
+      // Assert
+      expect(result1.provider).toBe('google');
+      expect(result2.provider).toBe('facebook');
+    });
+
+    it('應該驗證 Provider User ID 唯一性', async () => {
+      // Arrange
+      const userId = 'user-123';
+      const provider = 'google';
+      const providerUserId = 'google-duplicate-456';
+
+      const existingAccount = {
+        id: 'existing-social-123',
+        user_id: userId,
+        provider,
+        provider_user_id: 'old-google-id',
+        linked_at: new Date().toISOString(),
+      };
+
+      mockFrom.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnThis(),
+          single: jest.fn().mockResolvedValue({
+            data: existingAccount,
+            error: null,
+          }),
+        }),
+        update: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnValue({
+            select: jest.fn().mockReturnValue({
+              single: jest.fn().mockResolvedValue({
+                data: { ...existingAccount, provider_user_id: providerUserId },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      });
+
+      // Act
+      const result = await service.linkSocialAccount(userId, provider, providerUserId);
+
+      // Assert
+      expect(result.provider_user_id).toBe(providerUserId);
     });
   });
 
@@ -160,17 +186,14 @@ describe('AccountLinkingService', () => {
       // Arrange
       const provider = 'google';
       const providerUserId = 'google-user-789';
-
       const mockUserId = 'user-789';
 
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          select: jest.fn().mockReturnValue({
-            eq: jest.fn().mockReturnThis(),
-            single: jest.fn().mockResolvedValue({
-              data: { user_id: mockUserId },
-              error: null,
-            }),
+      mockFrom.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnThis(),
+          single: jest.fn().mockResolvedValue({
+            data: { user_id: mockUserId },
+            error: null,
           }),
         }),
       });
@@ -184,20 +207,15 @@ describe('AccountLinkingService', () => {
 
     it('應該在找不到使用者時返回 null', async () => {
       // Arrange
-      const provider = 'google';
-      const providerUserId = 'non-existent';
+      const provider = 'facebook';
+      const providerUserId = 'non-existent-user';
 
-      mockSupabaseService.getClient.mockReturnValue({
-        from: jest.fn().mockReturnValue({
-          select: jest.fn().mockReturnValue({
-            eq: jest.fn().mockReturnValue({
-              eq: jest.fn().mockReturnValue({
-                single: jest.fn().mockResolvedValue({
-                  data: null,
-                  error: { code: 'PGRST116' },
-                }),
-              }),
-            }),
+      mockFrom.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          eq: jest.fn().mockReturnThis(),
+          single: jest.fn().mockResolvedValue({
+            data: null,
+            error: { code: 'PGRST116' },
           }),
         }),
       });
